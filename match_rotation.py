@@ -18,13 +18,11 @@ parser.add_argument('--save-dir', type=str, default='./',
 args = parser.parse_args()
 
 
-def get_matched_coordinates(temp_img, map_img):
-    # initiate SIFT detector
+def get_matched_coordinates(orig_image, template):
     sift = cv2.SIFT_create()
 
-    # find the key points and descriptors with SIFT
-    kp1, des1 = sift.detectAndCompute(temp_img, None)
-    kp2, des2 = sift.detectAndCompute(map_img, None)
+    kp1, des1 = sift.detectAndCompute(orig_image, None)
+    kp2, des2 = sift.detectAndCompute(template, None)
 
     FLANN_INDEX_KDTREE = 0
     index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
@@ -32,10 +30,8 @@ def get_matched_coordinates(temp_img, map_img):
 
     flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-    # find matches by knn which calculates point distance in 128 dim
     matches = flann.knnMatch(des1, des2, k=2)
 
-    # store all the good matches as per Lowe's ratio test.
     good = []
     for m, n in matches:
         if m.distance < 0.7 * n.distance:
@@ -47,30 +43,28 @@ def get_matched_coordinates(temp_img, map_img):
         dst_pts = np.float32(
             [kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
 
-        # find homography
         M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
         matchesMask = mask.ravel().tolist()
 
-        w, h = temp_img.shape[::-1]
+        w, h = orig_image.shape[::-1]
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1],
                           [w - 1, 0]]).reshape(-1, 1, 2)
-        dst = cv2.perspectiveTransform(pts, M)  # matched coordinates
+        dst = cv2.perspectiveTransform(pts, M)
 
-        map_img = cv2.polylines(
-            map_img, [np.int32(dst)], True, 255, 3, cv2.LINE_AA)
+        template = cv2.polylines(
+            template, [np.int32(dst)], True, 255, 3, cv2.LINE_AA)
 
     else:
         print("Not enough matches are found - %d/%d" %
               (len(good), MIN_MATCH_COUNT))
         matchesMask = None
 
-    draw_params = dict(matchColor=(0, 255, 0),  # draw matches in green color
+    draw_params = dict(matchColor=(0, 255, 0),
                        singlePointColor=None,
-                       matchesMask=matchesMask,  # draw only inliers
+                       matchesMask=matchesMask,
                        flags=2)
 
-    # draw template and map image, matches, and keypoints
-    img3 = cv2.drawMatches(temp_img, kp1, map_img, kp2,
+    img3 = cv2.drawMatches(orig_image, kp1, template, kp2,
                            good, None, **draw_params)
 
     # if --show argument used, then show result image
@@ -78,14 +72,13 @@ def get_matched_coordinates(temp_img, map_img):
     plt.imshow(img3, 'gray'), plt.show()
 
 
-# read images
-temp_img_gray = cv2.imread("./images/parrot.png", 0)
-map_img_gray = cv2.imread("./images/parrot template.jpg", 0)
-# map_img_gray = cv2.imread("./images/rotated-parrot1.jpg", 0)
+orig_img_gray = cv2.imread("./images/parrot.png", 0)
+# template_gray = cv2.imread("./images/parrot template.jpg", 0)
+template_gray = cv2.imread("./images/rotated-parrot1.jpg", 0)
 
 # equalize histograms
-temp_img_eq = cv2.equalizeHist(temp_img_gray)
-map_img_eq = cv2.equalizeHist(map_img_gray)
+orig_img_eq = cv2.equalizeHist(orig_img_gray)
+temp_img_eq = cv2.equalizeHist(template_gray)
 
 # calculate matched coordinates
-get_matched_coordinates(temp_img_eq, map_img_eq)
+get_matched_coordinates(orig_img_eq, temp_img_eq)
